@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 
 from app.api.jobs import router as jobs_router
+from app.api.health import router as health_router
 from app.database import Base, engine
 from app.models.job_db import JobDB
 
@@ -23,6 +24,7 @@ app = FastAPI(
 
 
 app.include_router(jobs_router)
+app.include_router(health_router)
 
 
 

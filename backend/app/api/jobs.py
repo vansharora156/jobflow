@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -21,12 +21,18 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 @router.get("/")
 def get_jobs(
-    db: Session = Depends(get_db),
     limit: int = 20,
+    offset: int = 0,
+    db: Session = Depends(get_db),
 ):
+    limit = min(max(limit, 1), 100)
+    offset = max(offset, 0)
+
+
     statement = (
         select(JobDB)
         .order_by(JobDB.published_at.desc())
+        .offset(offset)
         .limit(limit)
     )
 
@@ -49,6 +55,26 @@ def get_job_count(db: Session = Depends(get_db)):
     return {
         "job_count": result.scalar()
     }
+
+
+
+
+@router.get("/{job_id}")
+def get_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    job = db.get(JobDB, job_id)
+
+
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found",
+        )
+
+
+    return job
 
 
 

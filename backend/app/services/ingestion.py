@@ -31,6 +31,7 @@ class IngestionService:
 
 
         for job in jobs:
+            savepoint = self.db.begin_nested()
             try:
                 job_record = JobDB(
                     title=job.get("title") or "Unknown",
@@ -44,22 +45,21 @@ class IngestionService:
 
 
                 self.db.add(job_record)
-
-
-                # Flush checks constraints without committing
                 self.db.flush()
+                savepoint.commit()
 
 
                 inserted += 1
 
 
             except IntegrityError:
-                self.db.rollback()
+                savepoint.rollback()
                 duplicates += 1
 
 
-            except Exception:
-                self.db.rollback()
+            except Exception as exc:
+                savepoint.rollback()
+                logger.error("Failed to ingest job item: %s", exc)
                 failed += 1
 
 
