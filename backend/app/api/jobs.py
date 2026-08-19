@@ -8,6 +8,8 @@ from app.database import get_db
 from app.models.job_db import JobDB
 from app.services.ingestion import IngestionService
 from app.sources.rss_source import RSSJobSource
+from app.sources.fallback_source import FallbackRSSJobSource
+from app.services.source_manager import SourceManager
 
 
 
@@ -53,15 +55,32 @@ def get_job_count(db: Session = Depends(get_db)):
 
 @router.post("/ingest")
 def ingest_jobs(db: Session = Depends(get_db)):
-    source = RSSJobSource(
+    primary = RSSJobSource(
         feed_url=settings.job_feed_url
     )
 
 
-    service = IngestionService(
-        db=db,
-        source=source,
+    fallback = FallbackRSSJobSource(
+        "data/fallback_jobs.xml"
     )
 
 
-    return service.ingest()
+    source_manager = SourceManager(
+        primary=primary,
+        fallback=fallback,
+    )
+
+
+    jobs, source_used = source_manager.fetch_jobs()
+
+
+    service = IngestionService(db)
+
+
+    result = service.ingest(jobs)
+
+
+    result["source"] = source_used
+
+
+    return result

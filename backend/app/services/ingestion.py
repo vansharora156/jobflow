@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 
 from app.models.job_db import JobDB
 from app.services.logger import logger
-from app.sources.rss_source import RSSJobSource
 
 
 
@@ -15,24 +14,13 @@ class IngestionService:
     def __init__(
         self,
         db: Session,
-        source: RSSJobSource,
     ):
         self.db = db
-        self.source = source
 
 
-    def ingest(self) -> dict:
+    def ingest(self, jobs: list[dict]) -> dict:
         logger.info(
-            "Starting ingestion from source=%s",
-            self.source.feed_url,
-        )
-
-
-        jobs = self.source.fetch_jobs()
-
-
-        logger.info(
-            "Fetched %d jobs from source",
+            "Starting ingestion of %d jobs",
             len(jobs),
         )
 
