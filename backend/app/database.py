@@ -1,25 +1,39 @@
-from typing import Generator
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
-from app.config import settings
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# Engine configuration (connect_args only needed for SQLite)
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+
+
+
+DATABASE_URL = "sqlite:///./jobflow.db"
+
 
 engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args=connect_args,
-    echo=settings.DEBUG
+    DATABASE_URL,
+    connect_args={"check_same_thread": False},
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
 
 
-def get_db() -> Generator[Session, None, None]:
-    """Dependency to provide a database session per request."""
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
+
+
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+
+
+def get_db():
     db = SessionLocal()
+
+
     try:
         yield db
     finally:
