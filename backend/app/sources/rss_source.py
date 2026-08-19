@@ -1,4 +1,5 @@
 import re
+import time
 from datetime import datetime
 from typing import Any
 
@@ -22,8 +23,29 @@ from app.services.logger import logger
 class RSSJobSource(JobSource):
 
 
-    def __init__(self, feed_url: str):
+    def __init__(
+        self,
+        feed_url: str,
+        min_request_interval: float = 5.0,
+    ):
         self.feed_url = feed_url
+        self.min_request_interval = min_request_interval
+        self._last_request_time = 0.0
+        self.last_status = "unknown"
+        self.last_error = None
+
+
+    def _wait_for_rate_limit(self):
+        elapsed = time.monotonic() - self._last_request_time
+
+
+        if elapsed < self.min_request_interval and self._last_request_time > 0:
+            wait_time = self.min_request_interval - elapsed
+            logger.info("Enforcing rate limit interval | waiting %.2fs", wait_time)
+            time.sleep(wait_time)
+
+
+        self._last_request_time = time.monotonic()
 
 
     @retry(
@@ -39,23 +61,52 @@ class RSSJobSource(JobSource):
         reraise=True,
     )
     def _fetch_feed(self) -> feedparser.FeedParserDict:
+        self._wait_for_rate_limit()
+
+
         logger.info(
             "Fetching RSS feed from %s (timeout=15s, max_retries=3)",
             self.feed_url,
         )
 
 
-        response = httpx.get(
-            self.feed_url,
-            timeout=15.0,
-            follow_redirects=True,
-        )
+        try:
+            response = httpx.get(
+                self.feed_url,
+                timeout=15.0,
+                follow_redirects=True,
+            )
 
 
-        response.raise_for_status()
+            if response.status_code == 429:
+                retry_after = response.headers.get("Retry-After")
 
 
-        return feedparser.parse(response.text)
+                if retry_after:
+                    logger.warning("HTTP 429 Rate limited. Retry-After header: %s seconds", retry_after)
+                    time.sleep(float(retry_after))
+
+
+                raise httpx.HTTPStatusError(
+                    "Rate limited by source",
+                    request=response.request,
+                    response=response,
+                )
+
+
+            response.raise_for_status()
+
+
+            self.last_status = "healthy"
+            self.last_error = None
+            return feedparser.parse(response.text)
+
+
+        except Exception as exc:
+            self.last_status = "unhealthy"
+            self.last_error = str(exc)
+            logger.error("Source request failed | error=%s", exc)
+            raise
 
 
     def fetch_jobs(self) -> list[dict[str, Any]]:
