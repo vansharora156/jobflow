@@ -6,51 +6,61 @@ It automatically fetches, normalizes, deduplicates, and persists job postings fr
 
 ---
 
-## 🏛️ System Architecture
+## 🌐 Live Production Deployment
+
+* **Live Web Dashboard:** [https://jobflow-suia.onrender.com/dashboard](https://jobflow-suia.onrender.com/dashboard)
+* **Live API Base URL:** [https://jobflow-suia.onrender.com](https://jobflow-suia.onrender.com)
+* **Swagger API Documentation:** [https://jobflow-suia.onrender.com/docs](https://jobflow-suia.onrender.com/docs)
+* **GitHub Repository:** [https://github.com/vansharora156/jobflow](https://github.com/vansharora156/jobflow)
+
+---
+
+## 🏛️ System Architecture & Data Flow
 
 ```text
-               +-----------------------------------+
-               |       JobFlow Web Dashboard       |
-               |        (http://127.0.0.1:8000)    |
-               +-----------------+-----------------+
-                                 |
-                                 v
-               +-----------------+-----------------+
-               |         FastAPI API Engine        |
-               +-----------------+-----------------+
-                                 |
-                        SourceManager Router
-                                 |
-             +-------------------+-------------------+
-             |                                       |
-             v (Primary)                             v (Fallback)
-+-------------------------+             +-------------------------+
-|   We Work Remotely RSS  |             |  JobFlow Sandbox XML    |
-| (15s Timeout, Pacing,   |             |  (Controlled Fallback   |
-| Exponential Backoff)    |             |   Feed)                 |
-+------------+------------+             +------------+------------+
-             |                                       |
-             +-------------------+-------------------+
-                                 |
-                                 v
-                    +------------+------------+
-                    |    Data Normalization   |
-                    | (Title, Company, Date,  |
-                    |  Clean HTML, Location)  |
-                    +------------+------------+
-                                 |
-                                 v
-                    +------------+------------+
-                    | IngestionService        |
-                    | (SAVEPOINT Isolation &  |
-                    |  URL Deduplication)     |
-                    +------------+------------+
-                                 |
-                                 v
-                    +------------+------------+
-                    |   SQLite Database DB    |
-                    |     (jobflow.db)        |
-                    +-------------------------+
+                 🌐 User / Client
+                        │
+                        ▼
+             ┌─────────────────────┐
+             │  JobFlow Dashboard  │
+             └──────────┬──────────┘
+                        │ HTTPS
+                        ▼
+             ┌─────────────────────┐
+             │  FastAPI API Engine │
+             └──────────┬──────────┘
+                        │
+              SourceManager Router
+                        │
+          ┌─────────────┴─────────────┐
+          │                           │
+          v (Primary)                 v (Fallback)
++-------------------+       +-------------------+
+|  WWR RSS Source   |       | JobFlow Sandbox   |
+| (15s Timeout,     |       | XML Fallback Feed |
+| Backoff & Pacing) |       +---------+---------+
++---------+---------+                 |
+          |                           |
+          └─────────────┬─────────────┘
+                        │
+                        v
+          +---------------------------+
+          |     Data Normalization    |
+          |  (Company: Title Split,   |
+          |   Clean HTML, Date Parsing|
+          +-------------+-------------+
+                        │
+                        v
+          +---------------------------+
+          |     IngestionService      |
+          |  (SAVEPOINT Deduplication)|
+          +-------------+-------------+
+                        │
+                        v
+          +---------------------------+
+          |      SQLite Database      |
+          |       (jobflow.db)        |
+          +---------------------------+
 ```
 
 ---
@@ -97,16 +107,13 @@ jobflow/
 │   │   └── main.py              # FastAPI application entrypoint
 │   ├── data/
 │   │   └── fallback_jobs.xml    # Sandbox XML fallback feed
-│   ├── scripts/
-│   │   ├── inspect_feed.py      # RSS feed inspection tool
-│   │   └── test_fallback.py     # Fallback source test script
 │   ├── tests/
 │   │   ├── test_api.py          # API route unit tests
 │   │   ├── test_fallback.py     # Failover unit tests
 │   │   ├── test_ingestion.py    # Deduplication & DB unit tests
 │   │   ├── test_main.py         # Main app route tests
 │   │   └── test_rss_source.py   # Title/Date parsing unit tests
-│   ├── Dockerfile               # Container build file
+│   ├── Procfile                 # Production deployment start command
 │   ├── requirements.txt         # Python dependencies
 │   └── jobflow.db               # SQLite database file
 ├── DECISIONS.md                 # Architecture Decision Records (ADR)
@@ -118,47 +125,25 @@ jobflow/
 
 ## 🚀 Quick Start Guide
 
-### 1. Local Environment Setup
+### Local Environment Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/<your-username>/jobflow.git
+# Clone repository
+git clone https://github.com/vansharora156/jobflow.git
 cd jobflow/backend
 
-# Create and activate virtual environment
+# Create & activate virtual environment
 python -m venv venv
-# On Windows (PowerShell):
+# Windows:
 .\venv\Scripts\Activate.ps1
-# On Linux/macOS:
+# Linux/macOS:
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the FastAPI server
+# Run FastAPI server
 uvicorn app.main:app --reload
-```
-
-* **Interactive Web Dashboard:** `http://127.0.0.1:8000/dashboard`
-* **Swagger API Documentation:** `http://127.0.0.1:8000/docs`
-* **Root API:** `http://127.0.0.1:8000/`
-
----
-
-### 2. Docker Container Setup
-
-```bash
-cd backend
-docker build -t jobflow-backend .
-docker run -p 8000:8000 jobflow-backend
-```
-
----
-
-## ⚙️ Environment Variables (`backend/.env`)
-
-```env
-JOB_FEED_URL=https://weworkremotely.com/remote-jobs.rss
 ```
 
 ---
@@ -168,7 +153,7 @@ JOB_FEED_URL=https://weworkremotely.com/remote-jobs.rss
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/` | Service root & system links |
-| `GET` | `/health` | Application health check |
+| `GET` | `/health` | Application health check (`{"status": "healthy"}`) |
 | `GET` | `/dashboard` | Interactive Web Dashboard UI |
 | `GET` | `/jobs/` | List jobs with pagination (`limit`, `offset`) |
 | `GET` | `/jobs/count` | Total count of persisted jobs in database |
@@ -178,9 +163,9 @@ JOB_FEED_URL=https://weworkremotely.com/remote-jobs.rss
 
 ---
 
-## 🧪 Running Automated Unit Tests
+## 🧪 Automated Test Execution
 
-Execute the complete 14-test suite using `pytest`:
+Run the complete 14-test suite using `pytest`:
 
 ```bash
 cd backend
@@ -188,35 +173,16 @@ python -m pytest
 ```
 
 ```text
-================ 14 passed in 0.89s ================
+================ 14 passed in 0.92s ================
 ```
 
 ---
 
-## 🛡️ Controlled Failure & Failover Demo
+## 🛡️ Failure & Fallback Demonstration
 
-You can test automatic failover in a controlled demo environment:
-
-1. Edit `backend/.env` to point to an invalid domain:
+1. Override primary URL in `backend/.env` with an invalid host:
    ```env
    JOB_FEED_URL=https://invalid-jobflow-test-source.example/rss
    ```
-2. Trigger ingestion:
-   ```bash
-   curl -X POST http://127.0.0.1:8000/jobs/ingest
-   ```
-3. **Observed Behavior:**
-   - Primary RSS fails 3 times after exponential backoff retries.
-   - `SourceManager` catches the exception and logs diagnostic error.
-   - Ingestion seamlessly switches to `FallbackRSSJobSource`.
-   - Response payload:
-     ```json
-     {
-       "fetched": 2,
-       "inserted": 2,
-       "duplicates": 0,
-       "failed": 0,
-       "source": "fallback"
-     }
-     ```
-4. Restore `backend/.env` back to `https://weworkremotely.com/remote-jobs.rss`.
+2. Trigger ingestion endpoint: `POST /jobs/ingest`
+3. **Result:** Retries 3 times with exponential backoff, detects DNS failure, automatically failovers to `FallbackRSSJobSource` (`data/fallback_jobs.xml`), returning `"source": "fallback"` and 2 inserted sandbox listings.
