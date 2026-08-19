@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobFlow — Resilient Ingestion Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #090d16;
+            --bg-card: #111827;
+            --bg-card-hover: #1f293d;
+            --border-color: #1f293d;
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --glass-bg: rgba(17, 24, 39, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo-area h1 {
+            font-size: 1.75rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .logo-area p {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.625rem 1.25rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            color: white;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+        }
+
+        /* Status Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(12px);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.625rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-badge.healthy {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-badge.warning {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--accent-amber);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .status-badge.danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 50%;
+            background-color: currentColor;
+            display: inline-block;
+        }
+
+        /* Banner for Last Ingestion Result */
+        .ingest-banner {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            margin-bottom: 2rem;
+            display: none;
+        }
+
+        .ingest-banner.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .ingest-banner-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .ingest-banner-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .metrics-chips {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .chip {
+            background: var(--bg-card);
+            padding: 0.375rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.8125rem;
+            font-family: 'JetBrains Mono', monospace;
+            border: 1px solid var(--border-color);
+        }
+
+        /* Main Content Layout */
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .grid-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            backdrop-filter: blur(12px);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .panel-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        /* Jobs Table / Cards */
+        .job-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.875rem;
+            transition: border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .job-card:hover {
+            border-color: rgba(59, 130, 246, 0.4);
+            transform: translateX(2px);
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.375rem;
+        }
+
+        .job-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .job-title:hover {
+            color: var(--accent-blue);
+        }
+
+        .job-company {
+            font-size: 0.875rem;
+            color: var(--accent-purple);
+            font-weight: 500;
+        }
+
+        .job-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+        }
+
+        .job-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .job-desc {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* Sources Health List */
+        .source-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .source-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .source-detail {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+        }
+
+        .pagination-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1.5rem;
+        }
+
+        .spinner {
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo-area">
+                <h1>⚡ JobFlow Engine</h1>
+                <p>Resilient Job Listing Ingestion & Normalization Platform</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="refreshDashboard()">Refresh</button>
+                <button class="btn btn-primary" id="ingestBtn" onclick="triggerIngestion()">
+                    <span id="btnText">▶ Run Ingestion</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Listings Ingested</div>
+                <div class="stat-value" id="totalJobsCount">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Primary Source Status</div>
+                <div class="stat-value" id="primaryStatusArea">
+                    <span class="status-badge healthy"><span class="dot"></span> Healthy</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Fallback Source</div>
+                <div class="stat-value">
+                    <span class="status-badge healthy"><span class="dot"></span> Ready</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Last Source Used</div>
+                <div class="stat-value" id="lastSourceUsed" style="font-size: 1.25rem; text-transform: uppercase;">
+                    PRIMARY
+                </div>
+            </div>
+        </div>
+
+        <!-- Ingestion Result Banner -->
+        <div class="ingest-banner" id="ingestBanner">
+            <div class="ingest-banner-header">
+                <div class="ingest-banner-title">
+                    <span style="color: var(--accent-green)">✓</span> Ingestion Completed Successfully
+                </div>
+                <span style="font-size: 0.75rem; color: var(--text-secondary);" id="ingestTimestamp"></span>
+            </div>
+            <div class="metrics-chips">
+                <div class="chip">Fetched: <strong id="mFetched">0</strong></div>
+                <div class="chip" style="color: var(--accent-green)">Inserted: <strong id="mInserted">0</strong></div>
+                <div class="chip" style="color: var(--accent-amber)">Duplicates: <strong id="mDuplicates">0</strong></div>
+                <div class="chip" style="color: var(--accent-red)">Failed: <strong id="mFailed">0</strong></div>
+                <div class="chip" style="color: var(--accent-purple)">Source: <strong id="mSource">primary</strong></div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="grid-layout">
+            <!-- Jobs List Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">Ingested Job Listings</div>
+                    <div style="font-size: 0.8125rem; color: var(--text-secondary)">Sorted by recency</div>
+                </div>
+                <div id="jobsContainer">
+                    <div style="color: var(--text-secondary); text-align: center; padding: 2rem;">Loading jobs...</div>
+                </div>
+                <div class="pagination-controls">
+                    <button class="btn btn-secondary" id="prevBtn" onclick="changePage(-1)" disabled>Previous</button>
+                    <span style="font-size: 0.875rem; color: var(--text-secondary)" id="pageLabel">Page 1</span>
+                    <button class="btn btn-secondary" id="nextBtn" onclick="changePage(1)">Next</button>
+                </div>
+            </div>
+
+            <!-- Source Health Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">Source Health & Topology</div>
+                </div>
+                <div class="source-item">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="source-name">We Work Remotely</div>
+                        <span class="status-badge healthy" id="wwrBadge"><span class="dot"></span> Active</span>
+                    </div>
+                    <div class="source-detail" style="margin-top: 0.375rem;">Primary RSS Feed</div>
+                    <div class="source-detail" style="font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">weworkremotely.com/remote-jobs.rss</div>
+                </div>
+                <div class="source-item">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="source-name">JobFlow Sandbox</div>
+                        <span class="status-badge healthy"><span class="dot"></span> Standby</span>
+                    </div>
+                    <div class="source-detail" style="margin-top: 0.375rem;">Controlled XML Fallback Feed</div>
+                    <div class="source-detail" style="font-family: 'JetBrains Mono', monospace; margin-top: 0.25rem;">data/fallback_jobs.xml</div>
+                </div>
+
+                <div style="margin-top: 1.5rem; background: var(--bg-card); border-radius: 0.5rem; padding: 1rem; border: 1px solid var(--border-color)">
+                    <div style="font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.5rem;">Resilience Policies Active</div>
+                    <ul style="font-size: 0.75rem; color: var(--text-secondary); padding-left: 1.2rem; line-height: 1.6;">
+                        <li>15.0s Request Timeout</li>
+                        <li>Exponential Backoff (3 retries)</li>
+                        <li>5.0s Minimum Request Pacing</li>
+                        <li>Automatic Fallback on Failure</li>
+                        <li>SAVEPOINT Deduplication</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentOffset = 0;
+        const limit = 10;
+
+        async function fetchHealth() {
+            try {
+                const res = await fetch('/sources/health');
+                const data = await res.json();
+
+                document.getElementById('totalJobsCount').innerText = data.stats.total_jobs_in_db;
+                
+                const pStatus = data.primary.status;
+                const pBadge = document.getElementById('primaryStatusArea');
+                const wwrBadge = document.getElementById('wwrBadge');
+                
+                if (pStatus === 'healthy') {
+                    pBadge.innerHTML = '<span class="status-badge healthy"><span class="dot"></span> Healthy</span>';
+                    wwrBadge.className = 'status-badge healthy';
+                    wwrBadge.innerHTML = '<span class="dot"></span> Active';
+                } else {
+                    pBadge.innerHTML = '<span class="status-badge warning"><span class="dot"></span> Degraded</span>';
+                    wwrBadge.className = 'status-badge warning';
+                    wwrBadge.innerHTML = '<span class="dot"></span> Failed Over';
+                }
+
+                if (data.stats.last_run_details) {
+                    showIngestBanner(data.stats.last_run_details, data.stats.last_ingested_at);
+                }
+            } catch (err) {
+                console.error("Failed to fetch health:", err);
+            }
+        }
+
+        async function fetchJobs() {
+            try {
+                const res = await fetch(`/jobs/?limit=${limit}&offset=${currentOffset}`);
+                const jobs = await res.json();
+                const container = document.getElementById('jobsContainer');
+
+                if (jobs.length === 0) {
+                    container.innerHTML = '<div style="color: var(--text-secondary); text-align: center; padding: 2rem;">No jobs found.</div>';
+                    return;
+                }
+
+                container.innerHTML = jobs.map(j => `
+                    <div class="job-card">
+                        <div class="job-header">
+                            <div>
+                                <a href="${j.url}" target="_blank" class="job-title">${escapeHtml(j.title)}</a>
+                                <div class="job-company">${escapeHtml(j.company)}</div>
+                            </div>
+                        </div>
+                        <div class="job-meta">
+                            <div class="job-meta-item">📍 ${escapeHtml(j.location || 'Remote')}</div>
+                            <div class="job-meta-item">📅 ${j.published_at ? new Date(j.published_at).toLocaleDateString() : 'Recent'}</div>
+                            <div class="job-meta-item">🏷️ ${j.source}</div>
+                        </div>
+                        <div class="job-desc">${escapeHtml(j.description || 'No description available.')}</div>
+                    </div>
+                `).join('');
+
+                document.getElementById('prevBtn').disabled = currentOffset === 0;
+                document.getElementById('nextBtn').disabled = jobs.length < limit;
+                document.getElementById('pageLabel').innerText = `Page ${Math.floor(currentOffset / limit) + 1}`;
+            } catch (err) {
+                console.error("Failed to fetch jobs:", err);
+            }
+        }
+
+        async function triggerIngestion() {
+            const btn = document.getElementById('ingestBtn');
+            const btnText = document.getElementById('btnText');
+            
+            btn.disabled = true;
+            btnText.innerHTML = '<div class="spinner"></div> Ingesting...';
+
+            try {
+                const res = await fetch('/jobs/ingest', { method: 'POST' });
+                const result = await res.json();
+                
+                showIngestBanner(result, new Date().toISOString());
+                await refreshDashboard();
+            } catch (err) {
+                alert("Ingestion failed: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btnText.innerHTML = '▶ Run Ingestion';
+            }
+        }
+
+        function showIngestBanner(result, timestamp) {
+            const banner = document.getElementById('ingestBanner');
+            document.getElementById('mFetched').innerText = result.fetched;
+            document.getElementById('mInserted').innerText = result.inserted;
+            document.getElementById('mDuplicates').innerText = result.duplicates;
+            document.getElementById('mFailed').innerText = result.failed;
+            document.getElementById('mSource').innerText = result.source;
+            document.getElementById('lastSourceUsed').innerText = result.source.toUpperCase();
+            document.getElementById('ingestTimestamp').innerText = timestamp ? new Date(timestamp).toLocaleTimeString() : '';
+            banner.classList.add('show');
+        }
+
+        function changePage(direction) {
+            currentOffset += direction * limit;
+            if (currentOffset < 0) currentOffset = 0;
+            fetchJobs();
+        }
+
+        async function refreshDashboard() {
+            await fetchHealth();
+            await fetchJobs();
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+            });
+        }
+
+        // Initialize on load
+        refreshDashboard();
+    </script>
+</body>
+</html>

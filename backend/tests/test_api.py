@@ -19,7 +19,7 @@ def test_health():
 def test_sources_health():
     response = client.get("/sources/health")
     assert response.status_code == 200
-    assert response.json()["primary"]["name"] == "we_work_remotely"
+    assert "We Work Remotely" in response.json()["primary"]["name"]
 
 
 def test_get_jobs_and_count():

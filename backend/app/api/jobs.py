@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from app.services.ingestion import IngestionService
 from app.sources.rss_source import RSSJobSource
 from app.sources.fallback_source import FallbackRSSJobSource
 from app.services.source_manager import SourceManager
+from app.api.health import last_ingestion_status
 
 
 
@@ -107,6 +109,17 @@ def ingest_jobs(db: Session = Depends(get_db)):
 
 
     result["source"] = source_used
+
+    # Update global health tracking status
+    last_ingestion_status["last_run"] = datetime.utcnow().isoformat()
+    last_ingestion_status["last_source"] = source_used
+    last_ingestion_status["last_result"] = result
+    if source_used == "primary":
+        last_ingestion_status["primary_status"] = "healthy"
+        last_ingestion_status["primary_error"] = None
+    else:
+        last_ingestion_status["primary_status"] = "degraded/failed_over"
+        last_ingestion_status["primary_error"] = getattr(primary, "last_error", "Primary source failed")
 
 
     return result
