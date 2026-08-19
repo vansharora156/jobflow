@@ -1,85 +1,89 @@
-# Architectural Decisions Record (ADR) — JobFlow
+# JobFlow – Engineering Decisions
 
-This document details the key technical, architectural, and design trade-off decisions for the **JobFlow** resilient job ingestion platform.
 
----
+## 1. Source Selection
 
-## ADR-001: Technology Stack & Core Framework
 
-* **Status:** Accepted
-* **Context:** Need a high-performance, type-safe, asynchronous web API engine with built-in documentation and validation.
-* **Decision:** Selected **Python 3.11+**, **FastAPI**, **Pydantic v2**, and **SQLAlchemy 2.0**.
-* **Consequences:** 
-  * Auto-generated OpenAPI (Swagger) documentation at `/docs`.
-  * Strong type safety and instant request schema validation.
-  * Clean separation between internal dataclass models, Pydantic DTOs, and SQLAlchemy ORM models.
+We Work Remotely RSS was selected as the primary job source because it
+provides structured public job data without requiring browser automation.
 
----
 
-## ADR-002: Modular Source Adapter Contract (`JobSource`)
+A controlled RSS XML sandbox is used as the fallback source so that
+failover can be tested deterministically without attempting to bypass
+source protections.
 
-* **Status:** Accepted
-* **Context:** Ingestion targets change, update markup, or introduce rate-limiting. Hardcoding ingestion logic inside API endpoints creates tight coupling.
-* **Decision:** Defined an abstract base interface `JobSource` (`app.sources.base.JobSource`) with `fetch_jobs() -> list[dict[str, Any]]`.
-* **Consequences:**
-  * Interchangeable source adapters (`RSSJobSource`, `FallbackRSSJobSource`).
-  * Switching upstream providers or adding scrapers/APIs requires zero code changes to the database or API routing layers.
 
----
+## 2. Source Architecture
 
-## ADR-003: Data Normalization Strategy
 
-* **Status:** Accepted
-* **Context:** Unstructured feeds use disparate field names (`title`, `region`, `summary`, `link`, `published`).
-* **Decision:** Implemented a dedicated normalization mapping inside `RSSJobSource`:
-  * **Title Parsing:** `Company: Job Title` split into separate `company` and `title` fields.
-  * **Location:** Mapping feed `region` to `location`.
-  * **Description:** HTML tag cleaning and whitespace stripping via `re.sub(r"<[^>]+>", " ", value)`.
-  * **Publication Date:** RFC 822 string parsing to naive UTC `datetime`.
-  * **URL:** Normalizing direct job link.
+JobFlow uses a source adapter interface:
 
----
 
-## ADR-004: Deduplication & Transactional Isolation
+JobSource
+├── RSSJobSource
+└── FallbackRSSJobSource
 
-* **Status:** Accepted
-* **Context:** Repeated ingestion runs from RSS feeds return overlapping jobs, threatening database bloat and duplicate listings.
-* **Decision:**
-  * Enforced a `unique=True` database constraint on `JobDB.url`.
-  * Implemented **SQLAlchemy SAVEPOINT isolation** (`db.begin_nested()`) inside `IngestionService`.
-* **Consequences:**
-  * When a duplicate URL is encountered, `savepoint.rollback()` isolates and rolls back ONLY the duplicate item, allowing valid unique listings in the same batch to be committed safely.
 
----
+SourceManager is responsible for selecting the primary source and
+automatically switching to the fallback when the primary fails or
+returns no usable jobs.
 
-## ADR-005: Pacing, Timeout, and Exponential Backoff Retry Policy
 
-* **Status:** Accepted
-* **Context:** Unreliable networks or rate-limiting servers can cause hanging connections or transient HTTP 5xx/429 failures.
-* **Decision:**
-  * **Explicit Timeout:** `httpx.get(..., timeout=15.0)` prevents indefinite thread blocking.
-  * **Pacing Interval:** Enforced a `5.0s` minimum request interval (`time.monotonic()`) between requests to prevent source hammering.
-  * **Exponential Backoff:** Configured `tenacity.retry` with `stop_after_attempt(3)` and `wait_exponential(multiplier=1, min=1, max=8)` for `httpx.TimeoutException` and `httpx.HTTPError`.
-  * **HTTP 429 Handling:** Inspects the `Retry-After` HTTP header and pauses execution before retrying.
+This keeps source-specific logic separate from ingestion and database
+logic.
 
----
 
-## ADR-006: Primary Source Failure Detection & Automatic Failover
+## 3. Normalization
 
-* **Status:** Accepted
-* **Context:** Primary job sources can become unavailable, blocked, or offline. The system must remain resilient and operational.
-* **Decision:** Designed `SourceManager` (`app.services.source_manager.SourceManager`) orchestrating a primary source (**We Work Remotely RSS**) and a controlled sandbox fallback feed (**JobFlow Sandbox XML**).
-* **Consequences:**
-  * If the primary source fails after all retries, `SourceManager` catches the exception, logs structured diagnostics, and seamlessly switches ingestion to the fallback feed.
-  * Endpoints return metadata indicating `"source": "primary"` or `"source": "fallback"`.
 
----
+The source data is normalized into a common internal Job model.
 
-## ADR-007: SQLite for Local Development vs PostgreSQL Trade-Offs
 
-* **Status:** Accepted
-* **Context:** Need zero-configuration, lightweight local persistence for evaluation while supporting production scale.
-* **Decision:** Selected SQLite as the default database (`jobflow.db`) with `check_same_thread=False`.
-* **Trade-Offs:**
-  * **SQLite Advantages:** File-based, zero setup overhead, instant test execution.
-  * **Production Path:** SQLAlchemy ORM abstraction allows switching to PostgreSQL by updating `DATABASE_URL` in `.env` without modifying business logic.
+The primary RSS feed uses:
+
+
+- "Company: Job Title" → company + title
+- region → location
+- summary → description
+- link → url
+- published → published_at
+
+
+This allows different sources to produce the same internal structure.
+
+
+## 4. Deduplication
+
+
+The job URL is used as the uniqueness key.
+
+
+The database enforces a unique constraint on the URL. SQLAlchemy
+SAVEPOINTs are used during batch ingestion so that a duplicate record
+does not roll back the entire batch.
+
+
+## 5. Reliability
+
+
+The RSS client uses:
+
+
+- 15-second HTTP timeout
+- 3 retry attempts
+- exponential backoff
+- minimum request pacing interval
+- HTTP 429 handling
+- Retry-After support
+- structured logging
+
+
+This reduces unnecessary pressure on upstream sources and allows
+temporary failures to recover automatically.
+
+
+## 6. Fallback Strategy
+
+
+If the primary source becomes unavailable, JobFlow automatically
+switches to the controlled fallback source.
