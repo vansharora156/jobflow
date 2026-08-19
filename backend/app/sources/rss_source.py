@@ -4,9 +4,17 @@ from typing import Any
 
 
 import feedparser
+import httpx
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 
 from .base import JobSource
+from app.services.logger import logger
 
 
 
@@ -18,8 +26,40 @@ class RSSJobSource(JobSource):
         self.feed_url = feed_url
 
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(
+            multiplier=1,
+            min=1,
+            max=8,
+        ),
+        retry=retry_if_exception_type(
+            (httpx.TimeoutException, httpx.HTTPError)
+        ),
+        reraise=True,
+    )
+    def _fetch_feed(self) -> feedparser.FeedParserDict:
+        logger.info(
+            "Fetching RSS feed from %s (timeout=15s, max_retries=3)",
+            self.feed_url,
+        )
+
+
+        response = httpx.get(
+            self.feed_url,
+            timeout=15.0,
+            follow_redirects=True,
+        )
+
+
+        response.raise_for_status()
+
+
+        return feedparser.parse(response.text)
+
+
     def fetch_jobs(self) -> list[dict[str, Any]]:
-        feed = feedparser.parse(self.feed_url)
+        feed = self._fetch_feed()
 
 
         jobs = []

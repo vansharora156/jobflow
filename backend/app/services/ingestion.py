@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 
 from app.models.job_db import JobDB
+from app.services.logger import logger
 from app.sources.rss_source import RSSJobSource
 
 
@@ -21,7 +22,19 @@ class IngestionService:
 
 
     def ingest(self) -> dict:
+        logger.info(
+            "Starting ingestion from source=%s",
+            self.source.feed_url,
+        )
+
+
         jobs = self.source.fetch_jobs()
+
+
+        logger.info(
+            "Fetched %d jobs from source",
+            len(jobs),
+        )
 
 
         inserted = 0
@@ -67,6 +80,15 @@ class IngestionService:
         except Exception:
             self.db.rollback()
             raise
+
+
+        logger.info(
+            "Ingestion completed | fetched=%d inserted=%d duplicates=%d failed=%d",
+            len(jobs),
+            inserted,
+            duplicates,
+            failed,
+        )
 
 
         return {
